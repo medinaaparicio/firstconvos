@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useAuth } from "../auth-context";
 
 /** Shared shell so every placeholder looks the same. Delete as you build real screens. */
 function Page({ title, children }: { title: string; children?: ReactNode }) {
@@ -9,25 +8,6 @@ function Page({ title, children }: { title: string; children?: ReactNode }) {
       <h1 className="text-3xl font-bold text-indigo-600">{title}</h1>
       <div className="mt-4 space-y-2 text-slate-700">{children}</div>
     </main>
-  );
-}
-
-export function HomePage() {
-  const { user, signOut } = useAuth();
-  return (
-    <Page title="firstconvos">
-      <p>Signed in as {user?.email}</p>
-      <nav className="flex gap-4 underline">
-        <Link to="/learn">Learn</Link>
-        <Link to="/play">Play</Link>
-      </nav>
-      <button
-        onClick={() => void signOut()}
-        className="mt-4 rounded bg-slate-200 px-3 py-1"
-      >
-        Sign out
-      </button>
-    </Page>
   );
 }
 

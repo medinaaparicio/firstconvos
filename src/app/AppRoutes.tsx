@@ -1,7 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
 import {
-  HomePage,
   JoinPage,
   LearnPage,
   NotFoundPage,
@@ -9,6 +8,7 @@ import {
   SpikePlaceholder,
 } from "./pages/Placeholders";
 import { LoginPage } from "../features/auth/LoginPage";
+import { HomePage } from "../features/home/HomePage";
 
 /*
  * TODO(Sofia's spike): HandTrackerSpike does not exist in the repo yet.
