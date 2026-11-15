@@ -4,11 +4,11 @@ import {
   HomePage,
   JoinPage,
   LearnPage,
-  LoginPage,
   NotFoundPage,
   PlayPage,
   SpikePlaceholder,
 } from "./pages/Placeholders";
+import { LoginPage } from "../features/auth/LoginPage";
 
 /*
  * TODO(Sofia's spike): HandTrackerSpike does not exist in the repo yet.

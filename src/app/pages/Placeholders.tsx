@@ -31,14 +31,6 @@ export function HomePage() {
   );
 }
 
-export function LoginPage() {
-  return (
-    <Page title="Log in">
-      <p>Placeholder. The real email/password form goes here next.</p>
-    </Page>
-  );
-}
-
 export function LearnPage() {
   return <Page title="Learn">Fingerspelling lessons go here.</Page>;
 }
