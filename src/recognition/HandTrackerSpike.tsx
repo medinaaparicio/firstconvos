@@ -150,6 +150,18 @@ export default function HandTrackerSpike() {
     }
 
     function loop() {
+      // If one frame throws, show the error but keep the loop running.
+      // Without this, a single error silently stops tracking for good.
+      try {
+        processFrame();
+      } catch (err) {
+        console.error(err);
+        setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      rafId = requestAnimationFrame(loop);
+    }
+
+    function processFrame() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
@@ -200,7 +212,6 @@ export default function HandTrackerSpike() {
           drawing.drawLandmarks(hand, { color: "#ffffff", radius: 3 });
         }
       }
-      rafId = requestAnimationFrame(loop);
     }
 
     start();
