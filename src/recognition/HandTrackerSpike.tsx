@@ -17,9 +17,14 @@ import type { HandFrame } from "./stillness";
 import {
   downloadJson,
   makeSampleFile,
+  RECORDED_SAMPLES,
   SAMPLES_PER_LETTER,
   STARTER_LETTERS,
 } from "./samples";
+import { classify, flattenSamples, MIN_CONFIDENCE } from "./classify";
+import type { Classification } from "./classify";
+
+const REFERENCES = flattenSamples(RECORDED_SAMPLES);
 
 /** What the "Log landmarks" button captured, shown under the video. */
 type Snapshot = HandFrame | "no-hand" | null;
@@ -71,6 +76,8 @@ export default function HandTrackerSpike() {
   const [holdProgress, setHoldProgress] = useState(0);
   const [waitingForMove, setWaitingForMove] = useState(false);
   const [samples, setSamples] = useState<SampleMap>({});
+  // Live classifier output, or null when no hand is visible.
+  const [guess, setGuess] = useState<Classification | null>(null);
 
   const count = samples[letter]?.length ?? 0;
 
@@ -155,9 +162,23 @@ export default function HandTrackerSpike() {
         const result = landmarker.detectForVideo(video, now);
         const hand = result.landmarks[0] ?? null;
         latestHandRef.current = hand;
+        const frame = hand ? toFrame(hand, video) : null;
+
+        // Live guess. Confidence is rounded so React redraws only on visible changes.
+        const guessed = frame ? classify(frame.normalized, REFERENCES) : null;
+        const next = guessed && {
+          ...guessed,
+          confidence: Math.round(guessed.confidence * 20) / 20,
+        };
+        // Returning prev unchanged tells React there's nothing to redraw.
+        setGuess((prev) =>
+          prev && next && prev.letter === next.letter && prev.confidence === next.confidence
+            ? prev
+            : next,
+        );
 
         if (capturingRef.current) {
-          const update = detectorRef.current.push(hand ? toFrame(hand, video) : null, now);
+          const update = detectorRef.current.push(frame, now);
           // Round so React only redraws when the bar visibly changes.
           setHoldProgress(Math.round(update.progress * 20) / 20);
           setWaitingForMove(update.waitingForMove);
@@ -213,6 +234,20 @@ export default function HandTrackerSpike() {
           Log landmarks
         </button>
       </div>
+      <p className="mb-4 text-lg text-slate-800">
+        Guess:{" "}
+        {!guess ? (
+          <span className="text-slate-400">no hand</span>
+        ) : guess.confidence >= MIN_CONFIDENCE ? (
+          <span className="font-bold text-indigo-600">
+            {guess.letter} ({Math.round(guess.confidence * 100)}%)
+          </span>
+        ) : (
+          <span className="text-slate-500">
+            not sure (closest: {guess.letter}, {Math.round(guess.confidence * 100)}%)
+          </span>
+        )}
+      </p>
       <div className="relative w-[640px] max-w-full overflow-hidden rounded-xl bg-slate-900">
         {/* -scale-x-100 mirrors the view so it feels like a mirror */}
         <video ref={videoRef} className="block w-full -scale-x-100" playsInline muted />
