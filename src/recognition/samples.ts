@@ -31,6 +31,15 @@ export function makeSampleFile(letter: Letter, samples: Point3[][]): SampleFile 
   };
 }
 
+/**
+ * Every recorded file in ./samples/, bundled in at build time. Adding a new
+ * <LETTER>.json there is enough; no code change needed.
+ * (import.meta.glob is a Vite feature, not React.)
+ */
+export const RECORDED_SAMPLES: SampleFile[] = Object.values(
+  import.meta.glob<SampleFile>("./samples/*.json", { eager: true, import: "default" }),
+);
+
 /** Make the browser download `data` as a JSON file. */
 export function downloadJson(filename: string, data: unknown): void {
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
