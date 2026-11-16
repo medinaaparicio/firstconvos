@@ -1,30 +1,20 @@
 /**
  * Developer page for Track A: live hand tracking, a landmark inspector, and
- * the sample capture tool. The one React page allowed in src/recognition/.
+ * the sample capture tool. Camera and recognition come from useHandTracker.
  */
-import { useEffect, useRef, useState } from "react";
-import {
-  FilesetResolver,
-  HandLandmarker,
-  DrawingUtils,
-} from "@mediapipe/tasks-vision";
-import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
+import { useRef, useState } from "react";
 import type { Letter } from "../types";
-import { normalize } from "./normalize";
+import { MIN_CONFIDENCE } from "./classify";
 import type { Point3 } from "./normalize";
-import { createStillnessDetector, DEFAULT_STILLNESS } from "./stillness";
-import type { HandFrame } from "./stillness";
 import {
   downloadJson,
   makeSampleFile,
-  RECORDED_SAMPLES,
   SAMPLES_PER_LETTER,
   STARTER_LETTERS,
 } from "./samples";
-import { classify, flattenSamples, MIN_CONFIDENCE } from "./classify";
-import type { Classification } from "./classify";
-
-const REFERENCES = flattenSamples(RECORDED_SAMPLES);
+import { createStillnessDetector, DEFAULT_STILLNESS } from "./stillness";
+import type { HandFrame } from "./stillness";
+import { useHandTracker } from "./useHandTracker";
 
 /** What the "Log landmarks" button captured, shown under the video. */
 type Snapshot = HandFrame | "no-hand" | null;
@@ -43,60 +33,51 @@ const POINT_NAMES = [
 
 const fmt = (n: number) => n.toFixed(2);
 
-const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-
-/** MediaPipe hand -> raw + normalized points. */
-function toFrame(hand: NormalizedLandmark[], video: HTMLVideoElement): HandFrame {
-  // Keep only x, y, z (MediaPipe also adds a "visibility" field).
-  const raw = hand.map(({ x, y, z }) => ({ x, y, z }));
-  return { raw, normalized: normalize(raw, video.videoWidth / video.videoHeight) };
-}
-
 export default function HandTrackerSpike() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState("Loading hand model...");
-  // Latest detected hand (21 points), or null if no hand is visible.
-  // A ref, not state: it changes every frame and nothing on screen shows it,
-  // so there's no reason to make React redraw.
-  const latestHandRef = useRef<NormalizedLandmark[] | null>(null);
-  // The snapshot IS shown on screen, so it's state: setting it redraws the table.
+  // Latest hand seen by the tracker. A ref: it changes every frame and is
+  // only read when the button is clicked, so no redraw is needed.
+  const latestFrameRef = useRef<HandFrame | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot>(null);
 
-  // --- Capture tool ---
-  // The frame loop below is set up once and never sees new state values, so
-  // anything it reads lives in a ref. The state copies drive the screen.
+  // --- Capture tool state ---
   const [letter, setLetter] = useState<Letter>(STARTER_LETTERS[0]);
-  const letterRef = useRef<Letter>(STARTER_LETTERS[0]);
   const [capturing, setCapturing] = useState(false);
-  const capturingRef = useRef(false);
   const detectorRef = useRef(createStillnessDetector());
   const [holdProgress, setHoldProgress] = useState(0);
   const [waitingForMove, setWaitingForMove] = useState(false);
   const [samples, setSamples] = useState<SampleMap>({});
-  // Live classifier output, or null when no hand is visible.
-  const [guess, setGuess] = useState<Classification | null>(null);
+
+  // No target letter: the spike just shows the best guess.
+  const { videoRef, canvasRef, status: trackerStatus, error, result: guess } = useHandTracker(null, {
+    // useHandTracker always calls the latest version of this function, so it
+    // sees current state (capturing, letter) without extra refs.
+    onFrame(frame, timeMs) {
+      latestFrameRef.current = frame;
+      if (!capturing) return;
+      const update = detectorRef.current.push(frame, timeMs);
+      setHoldProgress(Math.round(update.progress * 20) / 20);
+      setWaitingForMove(update.waitingForMove);
+      const pose = update.pose;
+      if (pose) {
+        setSamples((prev) => ({ ...prev, [letter]: [...(prev[letter] ?? []), pose] }));
+      }
+    },
+  });
 
   const count = samples[letter]?.length ?? 0;
 
   function logLandmarks() {
-    const hand = latestHandRef.current;
-    setSnapshot(hand ? toFrame(hand, videoRef.current!) : "no-hand");
+    setSnapshot(latestFrameRef.current ?? "no-hand");
   }
 
   function startStopCapture() {
-    const next = !capturing;
-    capturingRef.current = next;
-    setCapturing(next);
+    setCapturing(!capturing);
     detectorRef.current.reset();
     setHoldProgress(0);
     setWaitingForMove(false);
   }
 
   function chooseLetter(next: Letter) {
-    letterRef.current = next;
     setLetter(next);
     detectorRef.current.reset();
     setHoldProgress(0);
@@ -112,118 +93,12 @@ export default function HandTrackerSpike() {
     downloadJson(`${letter}.json`, makeSampleFile(letter, samples[letter] ?? []));
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    let landmarker: HandLandmarker | null = null;
-    let stream: MediaStream | null = null;
-    let rafId = 0;
-    let lastVideoTime = -1;
-
-    async function start() {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-        landmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
-          runningMode: "VIDEO",
-          numHands: 1,
-        });
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
-        });
-
-        // React dev mode mounts twice; bail out if we were already cleaned up
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          landmarker.close();
-          return;
-        }
-
-        const video = videoRef.current!;
-        video.srcObject = stream;
-        await video.play();
-        setStatus("Show your hand to the camera");
-        loop();
-      } catch (err) {
-        setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
-    function loop() {
-      // If one frame throws, show the error but keep the loop running.
-      // Without this, a single error silently stops tracking for good.
-      try {
-        processFrame();
-      } catch (err) {
-        console.error(err);
-        setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      rafId = requestAnimationFrame(loop);
-    }
-
-    function processFrame() {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-
-      if (video && canvas && landmarker && video.currentTime !== lastVideoTime) {
-        lastVideoTime = video.currentTime;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const now = performance.now();
-        const result = landmarker.detectForVideo(video, now);
-        const hand = result.landmarks[0] ?? null;
-        latestHandRef.current = hand;
-        const frame = hand ? toFrame(hand, video) : null;
-
-        // Live guess. Confidence is rounded so React redraws only on visible changes.
-        const guessed = frame ? classify(frame.normalized, REFERENCES) : null;
-        const next = guessed && {
-          ...guessed,
-          confidence: Math.round(guessed.confidence * 20) / 20,
-        };
-        // Returning prev unchanged tells React there's nothing to redraw.
-        setGuess((prev) =>
-          prev && next && prev.letter === next.letter && prev.confidence === next.confidence
-            ? prev
-            : next,
-        );
-
-        if (capturingRef.current) {
-          const update = detectorRef.current.push(frame, now);
-          // Round so React only redraws when the bar visibly changes.
-          setHoldProgress(Math.round(update.progress * 20) / 20);
-          setWaitingForMove(update.waitingForMove);
-          const pose = update.pose;
-          if (pose) {
-            const target = letterRef.current;
-            setSamples((prev) => ({ ...prev, [target]: [...(prev[target] ?? []), pose] }));
-          }
-        }
-
-        const ctx = canvas.getContext("2d")!;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const drawing = new DrawingUtils(ctx);
-        for (const hand of result.landmarks) {
-          drawing.drawConnectors(hand, HandLandmarker.HAND_CONNECTIONS, {
-            color: "#6366f1",
-            lineWidth: 3,
-          });
-          drawing.drawLandmarks(hand, { color: "#ffffff", radius: 3 });
-        }
-      }
-    }
-
-    start();
-
-    // cleanup: runs when the component goes away
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-      stream?.getTracks().forEach((t) => t.stop());
-      landmarker?.close();
-    };
-  }, []);
+  const status =
+    trackerStatus === "loading"
+      ? "Loading hand model..."
+      : trackerStatus === "error"
+        ? `Error: ${error}`
+        : "Show your hand to the camera";
 
   const button =
     "rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40";
@@ -247,7 +122,7 @@ export default function HandTrackerSpike() {
       </div>
       <p className="mb-4 text-lg text-slate-800">
         Guess:{" "}
-        {!guess ? (
+        {guess.letter === null ? (
           <span className="text-slate-400">no hand</span>
         ) : guess.confidence >= MIN_CONFIDENCE ? (
           <span className="font-bold text-indigo-600">
@@ -261,7 +136,12 @@ export default function HandTrackerSpike() {
       </p>
       <div className="relative w-[640px] max-w-full overflow-hidden rounded-xl bg-slate-900">
         {/* -scale-x-100 mirrors the view so it feels like a mirror */}
-        <video ref={videoRef} className="block w-full -scale-x-100" playsInline muted />
+        <video
+          ref={videoRef}
+          className="block w-full -scale-x-100"
+          playsInline
+          muted
+        />
         <canvas
           ref={canvasRef}
           className="absolute inset-0 h-full w-full -scale-x-100"
