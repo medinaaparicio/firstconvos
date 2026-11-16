@@ -6,6 +6,21 @@ import {
 } from "@mediapipe/tasks-vision";
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 import { normalize } from "./normalize";
+import type { Point3 } from "./normalize";
+
+/** What the "Log landmarks" button captured, shown under the video. */
+type Snapshot = { raw: Point3[]; normalized: Point3[] } | "no-hand" | null;
+
+const POINT_NAMES = [
+  "wrist",
+  "thumb 1", "thumb 2", "thumb 3", "thumb tip",
+  "index base", "index 2", "index 3", "index tip",
+  "middle base", "middle 2", "middle 3", "middle tip",
+  "ring base", "ring 2", "ring 3", "ring tip",
+  "pinky base", "pinky 2", "pinky 3", "pinky tip",
+];
+
+const fmt = (n: number) => n.toFixed(2);
 
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
 const MODEL_URL =
@@ -19,23 +34,20 @@ export default function HandTrackerSpike() {
   // A ref, not state: it changes every frame and nothing on screen shows it,
   // so there's no reason to make React redraw.
   const latestHandRef = useRef<NormalizedLandmark[] | null>(null);
+  // The snapshot IS shown on screen, so it's state: setting it redraws the table.
+  const [snapshot, setSnapshot] = useState<Snapshot>(null);
 
   function logLandmarks() {
     const hand = latestHandRef.current;
     if (!hand) {
-      console.log("No hand visible");
+      setSnapshot("no-hand");
       return;
     }
     // Keep only x, y, z (MediaPipe also adds a "visibility" field).
-    const points = hand.map(({ x, y, z }) => ({ x, y, z }));
-    console.log("Raw:");
-    console.table(points); // readable grid in the browser console
-    console.log(JSON.stringify(points)); // easy to copy
-
+    const raw = hand.map(({ x, y, z }) => ({ x, y, z }));
     const video = videoRef.current!;
-    const normalized = normalize(points, video.videoWidth / video.videoHeight);
-    console.log("Normalized (wrist = origin, palm = 1):");
-    console.table(normalized);
+    const normalized = normalize(raw, video.videoWidth / video.videoHeight);
+    setSnapshot({ raw, normalized });
   }
 
   useEffect(() => {
@@ -132,6 +144,41 @@ export default function HandTrackerSpike() {
           className="absolute inset-0 h-full w-full -scale-x-100"
         />
       </div>
+
+      {/* --- Snapshot from the "Log landmarks" button --- */}
+      {snapshot === "no-hand" && (
+        <p className="mt-4 text-slate-600">No hand visible. Hold your hand up and try again.</p>
+      )}
+      {snapshot && snapshot !== "no-hand" && (
+        <div className="mt-4 w-[640px] max-w-full overflow-x-auto">
+          <table className="w-full text-right font-mono text-xs text-slate-700">
+            <thead className="text-slate-500">
+              <tr>
+                <th className="text-left font-normal">point</th>
+                <th colSpan={3} className="font-normal">raw x, y, z</th>
+                <th colSpan={3} className="font-normal">normalized x, y, z</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* .map turns each point into a table row; key lets React tell rows apart */}
+              {snapshot.raw.map((p, i) => {
+                const n = snapshot.normalized[i];
+                return (
+                  <tr key={i} className="odd:bg-slate-50">
+                    <td className="text-left">{i} {POINT_NAMES[i]}</td>
+                    <td>{fmt(p.x)}</td>
+                    <td>{fmt(p.y)}</td>
+                    <td>{fmt(p.z)}</td>
+                    <td className="pl-4">{fmt(n.x)}</td>
+                    <td>{fmt(n.y)}</td>
+                    <td>{fmt(n.z)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
