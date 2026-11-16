@@ -4,6 +4,7 @@ import {
   HandLandmarker,
   DrawingUtils,
 } from "@mediapipe/tasks-vision";
+import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
 const MODEL_URL =
@@ -13,6 +14,22 @@ export default function HandTrackerSpike() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState("Loading hand model...");
+  // Latest detected hand (21 points), or null if no hand is visible.
+  // A ref, not state: it changes every frame and nothing on screen shows it,
+  // so there's no reason to make React redraw.
+  const latestHandRef = useRef<NormalizedLandmark[] | null>(null);
+
+  function logLandmarks() {
+    const hand = latestHandRef.current;
+    if (!hand) {
+      console.log("No hand visible");
+      return;
+    }
+    // Keep only x, y, z (MediaPipe also adds a "visibility" field).
+    const points = hand.map(({ x, y, z }) => ({ x, y, z }));
+    console.table(points); // readable grid in the browser console
+    console.log(JSON.stringify(points)); // easy to copy
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +78,7 @@ export default function HandTrackerSpike() {
         canvas.height = video.videoHeight;
 
         const result = landmarker.detectForVideo(video, performance.now());
+        latestHandRef.current = result.landmarks[0] ?? null;
 
         const ctx = canvas.getContext("2d")!;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -89,7 +107,16 @@ export default function HandTrackerSpike() {
 
   return (
     <div className="p-8">
-      <p className="mb-4 text-slate-600">{status}</p>
+      <div className="mb-4 flex items-center gap-4">
+        <p className="text-slate-600">{status}</p>
+        <button
+          type="button"
+          onClick={logLandmarks}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          Log landmarks
+        </button>
+      </div>
       <div className="relative w-[640px] max-w-full overflow-hidden rounded-xl bg-slate-900">
         {/* -scale-x-100 mirrors the view so it feels like a mirror */}
         <video ref={videoRef} className="block w-full -scale-x-100" playsInline muted />
