@@ -5,6 +5,7 @@ import {
   DrawingUtils,
 } from "@mediapipe/tasks-vision";
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
+import { normalize } from "./normalize";
 
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
 const MODEL_URL =
@@ -27,8 +28,14 @@ export default function HandTrackerSpike() {
     }
     // Keep only x, y, z (MediaPipe also adds a "visibility" field).
     const points = hand.map(({ x, y, z }) => ({ x, y, z }));
+    console.log("Raw:");
     console.table(points); // readable grid in the browser console
     console.log(JSON.stringify(points)); // easy to copy
+
+    const video = videoRef.current!;
+    const normalized = normalize(points, video.videoWidth / video.videoHeight);
+    console.log("Normalized (wrist = origin, palm = 1):");
+    console.table(normalized);
   }
 
   useEffect(() => {
