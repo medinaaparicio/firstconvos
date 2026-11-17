@@ -5,6 +5,7 @@ import type { Letter } from "../../types";
 import { MIN_CONFIDENCE } from "../../recognition/classify";
 import { RECORDED_SAMPLES } from "../../recognition/samples";
 import { useHandTracker } from "../../recognition/useHandTracker";
+import { HINTS } from "./hints";
 import { useLessons } from "./useLessons";
 
 const RECOGNIZED = new Set(RECORDED_SAMPLES.map((f) => f.letter));
@@ -122,6 +123,9 @@ export function LearnPage() {
   // The letter just signed correctly, kept on screen until "Next" is pressed.
   const [justDone, setJustDone] = useState<Letter | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Which letter's hint is open. Storing the letter (not true/false) means
+  // the hint closes by itself when the target letter changes.
+  const [hintFor, setHintFor] = useState<Letter | null>(null);
 
   const nextLetter = letters.find((l) => !completed.includes(l)) ?? null;
   const target = justDone ?? chosen ?? nextLetter;
@@ -202,6 +206,22 @@ export function LearnPage() {
       )}
 
       <Practice target={target} paused={justDone !== null} onCorrect={handleCorrect} />
+
+      {!justDone && HINTS[target] && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setHintFor(hintFor === target ? null : target)}
+            aria-expanded={hintFor === target}
+            className="text-sm font-medium text-indigo-600 hover:underline"
+          >
+            {hintFor === target ? "Hide hint" : "Show hint"}
+          </button>
+          {hintFor === target && (
+            <p className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-slate-700">{HINTS[target]}</p>
+          )}
+        </div>
+      )}
 
       {justDone && (
         <div className="mt-4 rounded-lg bg-green-50 p-4">
