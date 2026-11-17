@@ -5,8 +5,8 @@
 import type { Letter } from "../types";
 import type { Point3 } from "./normalize";
 
-/** The starter set agreed with Track B's lessons table. */
-export const STARTER_LETTERS: Letter[] = ["A", "B", "L", "V", "Y"];
+/** Starter letters (changed from A, B, L, V, Y on 2026-11-16). */
+export const STARTER_LETTERS: Letter[] = ["A", "B", "C", "T"];
 
 /** How many holds to record per letter. */
 export const SAMPLES_PER_LETTER = 10;
