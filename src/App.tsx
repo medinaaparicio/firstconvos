@@ -1,7 +1,21 @@
-import HandTrackerSpike from "./recognition/HandTrackerSpike";
+import { BrowserRouter } from "react-router-dom";
+import { AuthProvider } from "./app/AuthProvider";
+import { AppRoutes } from "./app/AppRoutes";
 
-// TEMPORARY: shows the spike directly until track-b-app-shell is merged.
-// After that merge, App.tsx comes from Track B and the spike lives at /spike.
+/*
+ * Order matters here:
+ *   BrowserRouter  -- turns the URL bar into something React can read
+ *     AuthProvider -- needs to be inside the router so ProtectedRoute can
+ *                     redirect, and outside the routes so every screen can
+ *                     call useAuth()
+ *       AppRoutes  -- the actual URL -> screen table
+ */
 export default function App() {
-  return <HandTrackerSpike />;
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  );
 }
