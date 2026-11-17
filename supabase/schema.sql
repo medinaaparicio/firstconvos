@@ -45,11 +45,11 @@ create policy "users can insert their own progress"
 
 -- No update or delete policies: progress rows cannot be changed or removed by clients.
 
--- 5. Seed the five starter letters.
+-- 5. Seed the four starter letters (must match STARTER_LETTERS in
+--    src/recognition/samples.ts).
 insert into public.lessons (letter, video_url, sort_order) values
   ('A', null, 1),
   ('B', null, 2),
-  ('L', null, 3),
-  ('V', null, 4),
-  ('Y', null, 5)
+  ('C', null, 3),
+  ('T', null, 4)
 on conflict (letter) do nothing;
