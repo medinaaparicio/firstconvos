@@ -1,13 +1,9 @@
 import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
-import {
-  JoinPage,
-  LearnPage,
-  NotFoundPage,
-  PlayPage,
-} from "./pages/Placeholders";
+import { JoinPage, NotFoundPage, PlayPage } from "./pages/Placeholders";
 import { LoginPage } from "../features/auth/LoginPage";
 import { HomePage } from "../features/home/HomePage";
+import { LearnPage } from "../features/learn/LearnPage";
 import HandTrackerSpike from "../recognition/HandTrackerSpike";
 
 // /spike stays outside <ProtectedRoute> so the recognition dev page is
