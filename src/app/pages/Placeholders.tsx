@@ -11,10 +11,6 @@ function Page({ title, children }: { title: string; children?: ReactNode }) {
   );
 }
 
-export function LearnPage() {
-  return <Page title="Learn">Fingerspelling lessons go here.</Page>;
-}
-
 export function PlayPage() {
   return <Page title="Play">The charades game goes here.</Page>;
 }
