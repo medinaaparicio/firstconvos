@@ -2,15 +2,23 @@
  * Letter classification with k-nearest-neighbors (kNN).
  *
  * Compare the user's normalized pose with every recorded sample, take the K
- * closest, and let them vote. Pure function: no camera, no React, no files.
+ * closest, and let them vote, with closer samples getting a bigger vote.
+ * Pure function: no camera, no React, no files.
  */
 import type { Letter } from "../types";
 import type { Point3 } from "./normalize";
 import type { SampleFile } from "./samples";
 import { shapeDistance } from "./stillness";
 
-/** How many nearest samples vote. With 10 samples per letter, 5 works well. */
-export const K = 5;
+/**
+ * How many nearest samples vote. 3, not 5: for look-alikes (A vs T) the
+ * single closest sample is usually right, and with 5 voters the other
+ * letter could outvote it. Tested on the A/B/C/T recordings.
+ */
+export const K = 3;
+
+/** Floor on distance when weighting votes, so an exact match can't dominate. */
+const MIN_VOTE_DISTANCE = 0.02;
 
 /**
  * Distance (average point gap, in palm lengths) at which closeness drops to
@@ -27,7 +35,7 @@ export type LabeledPose = { letter: Letter; pose: Point3[] };
 export type Classification = {
   /** Best guess, or null if there are no samples to compare against. */
   letter: Letter | null;
-  /** 0 to 1: vote share times closeness. */
+  /** 0 to 1: share of the (distance-weighted) vote times closeness. */
   confidence: number;
   /** Average distance to the winning letter's voting samples. */
   distance: number;
@@ -55,21 +63,25 @@ export function classify(
     .sort((a, b) => a.distance - b.distance)
     .slice(0, k);
 
-  // 2. Count votes per letter (and their total distance, for tie-breaks).
-  const votes = new Map<Letter, { count: number; total: number }>();
+  // 2. Add up votes per letter. Each sample's vote is 1 / distance, so a
+  //    very close sample counts more than one that's barely in the top k.
+  const votes = new Map<Letter, { weight: number; count: number; total: number }>();
+  let allWeight = 0;
   for (const n of nearest) {
-    const v = votes.get(n.letter) ?? { count: 0, total: 0 };
+    const weight = 1 / Math.max(n.distance, MIN_VOTE_DISTANCE);
+    const v = votes.get(n.letter) ?? { weight: 0, count: 0, total: 0 };
+    v.weight += weight;
     v.count += 1;
     v.total += n.distance;
     votes.set(n.letter, v);
+    allWeight += weight;
   }
 
-  // 3. Most votes wins; on a tie, the closer letter wins.
+  // 3. The letter with the most vote weight wins.
   let best: Letter = nearest[0].letter;
   let bestVote = votes.get(best)!;
   for (const [letter, v] of votes) {
-    const closer = v.total / v.count < bestVote.total / bestVote.count;
-    if (v.count > bestVote.count || (v.count === bestVote.count && closer)) {
+    if (v.weight > bestVote.weight) {
       best = letter;
       bestVote = v;
     }
@@ -77,7 +89,7 @@ export function classify(
 
   // 4. Confidence = how much the neighbors agree x how close they are.
   const distance = bestVote.total / bestVote.count;
-  const voteShare = bestVote.count / nearest.length;
+  const voteShare = bestVote.weight / allWeight;
   const closeness = Math.max(0, 1 - distance / MAX_DISTANCE);
   return { letter: best, confidence: voteShare * closeness, distance };
 }
